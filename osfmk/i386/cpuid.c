@@ -315,6 +315,8 @@ cpuid_set_AMDcache_info( i386_cpu_info_t * info_p )
     uint32_t    linesizes[LCACHE_MAX];
     cache_type_t    type;
     uint32_t    colors;
+    uint64_t cores = 0;
+    uint64_t logical = 0;
     
     bzero( linesizes, sizeof(linesizes) );
     
@@ -424,13 +426,17 @@ cpuid_set_AMDcache_info( i386_cpu_info_t * info_p )
             info_p->cache_sharing[type]     = 0;
             info_p->cache_partitions[type]    = 0;
         } else {
-            // size reported in 512 KB packs.
-            if (info_p->cpuid_family == 23){
-                uint32_t ryzen_L3            = bitfield32(reg[edx], 27, 20);
-                info_p->cache_size[type]      = (512 * 1024 * cpuid_c_size)/(info_p->cpuid_cores_per_package);
-                
-                DBG(" L3 Ryzen Size Detection     : 2 x %dMB\n", ryzen_L3);
-                DBG(" L3 Ryzen            : %d\n", info_p->cache_size[type] );
+            switch (info_p->cpuid_family) {
+                case 22:
+                    info_p->cache_size[type] = cpuid_c_size * 1024 / (info_p->cpuid_cores_per_package);
+                    break;
+                case 23:
+                    info_p->cache_size[type]      = (512 * 1024 * cpuid_c_size)/(info_p->cpuid_cores_per_package);
+                    break;
+                    
+                    info_p->cache_size[type]      = cpuid_c_size * 1024;
+            }
+            DBG(" L3             : %d\n", info_p->cache_size[type] );
             }
             else{
                 info_p->cache_size[type]      = cpuid_c_size * 1024;
@@ -575,11 +581,11 @@ cpuid_set_generic_info(i386_cpu_info_t *info_p)
         //info_p->cpuid_cache_L2_associativity = assoc;
         info_p->cpuid_cache_L2_associativity = bitfield32(reg[ecx],15,12);
         info_p->cpuid_cache_size       = bitfield32(reg[ecx],31,16);
-        cpuid_fn(0x80000008, reg);
+        /* cpuid_fn(0x80000008, reg);
         info_p->cpuid_address_bits_physical =
         bitfield32(reg[eax], 7, 0);
         info_p->cpuid_address_bits_virtual =
-        bitfield32(reg[eax],15, 8);
+        bitfield32(reg[eax],15, 8); */
     }
     
     
@@ -620,7 +626,7 @@ cpuid_set_generic_info(i386_cpu_info_t *info_p)
     if (info_p->cpuid_family == 0x0f || info_p->cpuid_family == 0x06)
         info_p->cpuid_model += (info_p->cpuid_extmodel << 4);
     
-    if (info_p->cpuid_features & CPUID_FEATURE_HTT)
+    if (info_p->cpuid_features & CPUID_FEATURE_HTT & IsIntelCPU())
         info_p->cpuid_logical_per_package =
         bitfield32(reg[ebx], 23, 16);
     else
@@ -825,17 +831,6 @@ cpuid_set_cpufamily(i386_cpu_info_t *info_p)
     
     info_p->cpuid_cpufamily = cpufamily;
     DBG("cpuid_set_cpufamily(%p) returning 0x%x\n", info_p, cpufamily);
-    
-    /* AnV - Fix AMD CPU Family to Intel Penryn */
-    /** This is needed to boot because the dyld assumes that an UNKNOWN
-     ** Platform is HASWELL-capable, dropping an SSE4.2 'pcmpistri' on us during bcopies.
-     **/
-    if (IsAmdCPU())
-    {
-        cpufamily = CPUFAMILY_INTEL_PENRYN;
-        info_p->cpuid_cpufamily = cpufamily;
-    }
-    
     return cpufamily;
 }
 
