@@ -438,9 +438,6 @@ cpuid_set_AMDcache_info( i386_cpu_info_t * info_p )
             }
             DBG(" L3             : %d\n", info_p->cache_size[type] );
             }
-            else{
-                info_p->cache_size[type]      = cpuid_c_size * 1024;
-            }
             
             info_p->cache_sharing[type]     = 1;
             info_p->cache_partitions[type]    = cpuid_c_partitions;
@@ -449,7 +446,6 @@ cpuid_set_AMDcache_info( i386_cpu_info_t * info_p )
             uint32_t cache_sets = info_p->cache_size[type] / (cpuid_c_partitions * cpuid_c_linesize * cache_associativity);
         }
     }
-}
 
 /* this function is Intel-specific */
 static void
