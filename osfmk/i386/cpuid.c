@@ -426,24 +426,32 @@ cpuid_set_AMDcache_info( i386_cpu_info_t * info_p )
             info_p->cache_sharing[type]     = 0;
             info_p->cache_partitions[type]    = 0;
         } else {
+            // size reported in 512 KB packs.
+            
             switch (info_p->cpuid_family) {
                 case 22:
-                    info_p->cache_size[type] = cpuid_c_size * 1024 / (info_p->cpuid_cores_per_package);
+                    info_p->cache_size[type] = cpuid_c_size * 1024 / (info_p->cpuid_logical_per_package);
                     break;
                 case 23:
                     info_p->cache_size[type]      = (512 * 1024 * cpuid_c_size)/(info_p->cpuid_cores_per_package);
                     break;
-                    
+                default:
                     info_p->cache_size[type]      = cpuid_c_size * 1024;
+                    break;
             }
             DBG(" L3             : %d\n", info_p->cache_size[type] );
-            }
+            
             
             info_p->cache_sharing[type]     = 1;
             info_p->cache_partitions[type]    = cpuid_c_partitions;
             
             linesizes[type] = cpuid_c_linesize;
             uint32_t cache_sets = info_p->cache_size[type] / (cpuid_c_partitions * cpuid_c_linesize * cache_associativity);
+            
+            colors = ( cpuid_c_linesize * cache_sets ) >> 12;
+            if ( colors > vm_cache_geometry_colors )
+                vm_cache_geometry_colors = colors;
+            }
         }
     }
 
@@ -827,6 +835,17 @@ cpuid_set_cpufamily(i386_cpu_info_t *info_p)
     
     info_p->cpuid_cpufamily = cpufamily;
     DBG("cpuid_set_cpufamily(%p) returning 0x%x\n", info_p, cpufamily);
+    
+    /* AnV - Fix AMD CPU Family to Intel Penryn */
+    /** This is needed to boot because the dyld assumes that an UNKNOWN
+     ** Platform is HASWELL-capable, dropping an SSE4.2 'pcmpistri' on us during bcopies.
+     **/
+    if (IsAmdCPU())
+    {
+        cpufamily = CPUFAMILY_INTEL_PENRYN;
+        info_p->cpuid_cpufamily = cpufamily;
+    }
+    
     return cpufamily;
 }
 
