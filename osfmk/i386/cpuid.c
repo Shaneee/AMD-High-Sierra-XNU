@@ -325,7 +325,7 @@ cpuid_set_AMDcache_info( i386_cpu_info_t * info_p )
     cpuid_fn(0x80000008, reg);
     info_p->cpuid_cores_per_package = bitfield32(reg[ecx], 7, 0) + 1;
     info_p->cpuid_logical_per_package = info_p->cpuid_cores_per_package;
-    
+        
     /* L1 Data */
     {
         type = L1D;
@@ -429,7 +429,7 @@ cpuid_set_AMDcache_info( i386_cpu_info_t * info_p )
             // size reported in 512 KB packs.
             
             switch (info_p->cpuid_family) {
-                case 22:
+                case 21:
                     info_p->cache_size[type] = cpuid_c_size * 1024 / (info_p->cpuid_logical_per_package);
                     break;
                 case 23:
@@ -793,8 +793,11 @@ cpuid_set_cpufamily(i386_cpu_info_t *info_p)
                 case 15:
                     cpufamily = CPUFAMILY_INTEL_MEROM;
                     break;
-                case 23:
+                case 21:
                     cpufamily = CPUFAMILY_INTEL_PENRYN;
+                    break;
+                case 23:
+                    cpufamily = CPUFAMILY_INTEL_SKYLAKE;
                     break;
                 case CPUID_MODEL_NEHALEM:
                 case CPUID_MODEL_FIELDS:
@@ -835,17 +838,6 @@ cpuid_set_cpufamily(i386_cpu_info_t *info_p)
     
     info_p->cpuid_cpufamily = cpufamily;
     DBG("cpuid_set_cpufamily(%p) returning 0x%x\n", info_p, cpufamily);
-    
-    /* AnV - Fix AMD CPU Family to Intel Penryn */
-    /** This is needed to boot because the dyld assumes that an UNKNOWN
-     ** Platform is HASWELL-capable, dropping an SSE4.2 'pcmpistri' on us during bcopies.
-     **/
-    if (IsAmdCPU())
-    {
-        cpufamily = CPUFAMILY_INTEL_PENRYN;
-        info_p->cpuid_cpufamily = cpufamily;
-    }
-    
     return cpufamily;
 }
 
