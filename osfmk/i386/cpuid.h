@@ -415,7 +415,7 @@ typedef struct {
 	cpuid_xsave_leaf_t	*cpuid_xsave_leafp;
 	uint64_t		cpuid_leaf7_features;
 	cpuid_tsc_leaf_t	cpuid_tsc_leaf;
-	cpuid_xsave_leaf_t	cpuid_xsave_leaf;
+	cpuid_xsave_leaf_t    cpuid_xsave_leaf[2];
 } i386_cpu_info_t;
 
 #ifdef MACH_KERNEL_PRIVATE
