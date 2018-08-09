@@ -1143,15 +1143,29 @@ cpuid_set_generic_info(i386_cpu_info_t *info_p)
         
     }
     
-    /*
-     * Leaf7 Features:
-     */
-    cpuid_fn(0x7, reg);
-    info_p->cpuid_leaf7_features = quad(reg[ecx], reg[ebx]);
+    if (info_p->cpuid_model >= CPUID_MODEL_IVYBRIDGE) {
+        /*
+         * Leaf7 Features:
+         */
+        cpuid_fn(0x7, reg);
+        info_p->cpuid_leaf7_features = reg[ebx];
+        
+        DBG(" Feature Leaf7:\n");
+        DBG("  EBX           : 0x%x\n", reg[ebx]);
+    }
     
-    DBG(" Feature Leaf7:\n");
-    DBG("  EBX           : 0x%x\n", reg[ebx]);
-    DBG("  ECX           : 0x%x\n", reg[ecx]);
+    if (info_p->cpuid_max_basic >= 0x15) {
+        /*
+         * TCS/CCC frequency leaf:
+         */
+        cpuid_fn(0x15, reg);
+        info_p->cpuid_tsc_leaf.denominator = reg[eax];
+        info_p->cpuid_tsc_leaf.numerator   = reg[ebx];
+        
+        DBG(" TSC/CCC Information Leaf:\n");
+        DBG("  numerator     : 0x%x\n", reg[ebx]);
+        DBG("  denominator   : 0x%x\n", reg[eax]);
+    }
     
     return;
 }
@@ -1168,10 +1182,8 @@ cpuid_set_cpufamily(i386_cpu_info_t *info_p)
                     cpufamily = CPUFAMILY_INTEL_MEROM;
                     break;
                 case 21:
-                    cpufamily = CPUFAMILY_INTEL_PENRYN;
-                    break;
                 case 23:
-                    cpufamily = CPUFAMILY_INTEL_IVYBRIDGE;
+                    cpufamily = CPUFAMILY_INTEL_PENRYN;
                     break;
                 case CPUID_MODEL_NEHALEM:
                 case CPUID_MODEL_FIELDS:
