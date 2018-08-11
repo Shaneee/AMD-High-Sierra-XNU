@@ -1148,10 +1148,11 @@ cpuid_set_generic_info(i386_cpu_info_t *info_p)
          * Leaf7 Features:
          */
         cpuid_fn(0x7, reg);
-        info_p->cpuid_leaf7_features = reg[ebx];
+        info_p->cpuid_leaf7_features = quad(reg[ecx], reg[ebx]);
         
         DBG(" Feature Leaf7:\n");
         DBG("  EBX           : 0x%x\n", reg[ebx]);
+        DBG("  ECX           : 0x%x\n", reg[ecx]);
     }
     
     if (info_p->cpuid_max_basic >= 0x15) {
@@ -1178,10 +1179,6 @@ cpuid_set_cpufamily(i386_cpu_info_t *info_p)
     switch (info_p->cpuid_family) {
         case 6:
             switch (info_p->cpuid_model) {
-                case 15:
-                    cpufamily = CPUFAMILY_INTEL_MEROM;
-                    break;
-                case 21:
                 case 23:
                     cpufamily = CPUFAMILY_INTEL_PENRYN;
                     break;
@@ -1224,6 +1221,17 @@ cpuid_set_cpufamily(i386_cpu_info_t *info_p)
     
     info_p->cpuid_cpufamily = cpufamily;
     DBG("cpuid_set_cpufamily(%p) returning 0x%x\n", info_p, cpufamily);
+    
+    /* AnV - Fix AMD CPU Family to Intel Penryn */
+    /** This is needed to boot because the dyld assumes that an UNKNOWN
+     ** Platform is HASWELL-capable, dropping an SSE4.2 'pcmpistri' on us during bcopies.
+     **/
+    if (IsAmdCPU())
+    {
+        cpufamily = CPUFAMILY_INTEL_PENRYN;
+        info_p->cpuid_cpufamily = cpufamily;
+    }
+    
     return cpufamily;
 }
 
@@ -1587,6 +1595,11 @@ cpuid_family(void)
 uint32_t
 cpuid_cpufamily(void)
 {
+    if (IsAmdCPU())
+    {
+        return CPUFAMILY_INTEL_PENRYN;
+    }
+    
     return cpuid_info()->cpuid_cpufamily;
 }
 
