@@ -313,6 +313,25 @@ mtrr_init(void)
  * barrier synchronization among all processors. This function is
  * called from the rendezvous IPI handler, and mtrr_update_cpu().
  */
+//enum {
+//    PAT_UC = 0,             /* uncached */
+//    PAT_WC = 1,             /* Write combining */
+//    PAT_WT = 4,             /* Write Through */
+//    PAT_WP = 5,             /* Write Protected */
+//    PAT_WB = 6,             /* Write Back (default) */
+//    PAT_UC_MINUS = 7,       /* UC, but can be overriden by MTRR */
+//};
+//#define PAT(x, y)       ((uint64_t)PAT_ ## y << ((x)*8))
+
+//Bronzovka: For artifacts: i fixed here - work or don't work :)))
+#define	PATENTRY(n, type)	(type << ((n) * 8))
+#define	PAT_UC		0x0ULL
+#define	PAT_WC		0x1ULL
+#define	PAT_WT		0x4ULL
+#define	PAT_WP		0x5ULL
+#define	PAT_WB		0x6ULL
+#define	PAT_UCMINUS	0x7ULL
+
 static void
 mtrr_update_action(void * cache_control_type)
 {
@@ -341,8 +360,20 @@ mtrr_update_action(void * cache_control_type)
 		/* Change PA6 attribute field to WC */
 		uint64_t pat = rdmsr64(MSR_IA32_CR_PAT);
 		DBG("CPU%d PAT: was 0x%016llx\n", get_cpu_number(), pat);
-		pat &= ~(0x0FULL << 48);
-		pat |=  (0x01ULL << 48);
+        if (IsIntelCPU())
+        {
+            pat &= ~(0x0FULL << 48);
+            pat |=  (0x01ULL << 48);
+        } else {
+            //Bronzovka: modified pat...
+            /* We change WT to WC. Leave all other entries the default values. */
+            pat = PATENTRY(0, PAT_WB) | PATENTRY(1, PAT_WC) |
+                PATENTRY(2, PAT_UCMINUS) | PATENTRY(3, PAT_UC) |
+                PATENTRY(4, PAT_WB) | PATENTRY(5, PAT_WC) |
+                PATENTRY(6, PAT_UCMINUS) | PATENTRY(7, PAT_UC);
+
+            //pat = PAT(0, WB) | PAT(1, WC) | PAT(2, UC_MINUS) | PAT(3, UC) | PAT(4, WB) | PAT(5, WC) | PAT(6, UC_MINUS) | PAT(7, UC);
+        }
 		wrmsr64(MSR_IA32_CR_PAT, pat);
 		DBG("CPU%d PAT: is  0x%016llx\n",
 		    get_cpu_number(), rdmsr64(MSR_IA32_CR_PAT));
@@ -689,8 +720,18 @@ pat_init(void)
 	DBG("CPU%d PAT: was 0x%016llx\n", get_cpu_number(), pat);
 
 	/* Change PA6 attribute field to WC if required */
+    if (IsIntelCPU())
+    {
 	if ((pat & ~(0x0FULL << 48)) != (0x01ULL << 48)) {
 		mtrr_update_action(CACHE_CONTROL_PAT);
 	}
+    } else {
+        if ((pat = PATENTRY(0, PAT_WB) | PATENTRY(1, PAT_WC) |
+             PATENTRY(2, PAT_UCMINUS) | PATENTRY(3, PAT_UC) |
+             PATENTRY(4, PAT_WB) | PATENTRY(5, PAT_WC) |
+             PATENTRY(6, PAT_UCMINUS) | PATENTRY(7, PAT_UC))) {
+            mtrr_update_action(CACHE_CONTROL_PAT);
+        }
+    }
 	ml_set_interrupts_enabled(istate);
 }

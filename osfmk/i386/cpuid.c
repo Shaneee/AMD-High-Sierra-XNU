@@ -33,25 +33,25 @@
 
 #include <i386/cpuid.h>
 
-static	boolean_t	cpuid_dbg
+static    boolean_t    cpuid_dbg
 #if DEBUG
-				  = TRUE;
+= TRUE;
 #else
-				  = FALSE;
+= FALSE;
 #endif
-#define DBG(x...)			\
-	do {				\
-		if (cpuid_dbg)		\
-			kprintf(x);	\
-	} while (0)			\
+#define DBG(x...)            \
+do {                \
+if (cpuid_dbg)        \
+kprintf(x);    \
+} while (0)            \
 
 #define min(a,b) ((a) < (b) ? (a) : (b))
-#define quad(hi,lo)	(((uint64_t)(hi)) << 32 | (lo))
+#define quad(hi,lo)    (((uint64_t)(hi)) << 32 | (lo))
 
 /* Only for 32bit values */
-#define bit32(n)		(1U << (n))
-#define bitmask32(h,l)		((bit32(h)|(bit32(h)-1)) & ~(bit32(l)-1))
-#define bitfield32(x,h,l)	((((x) & bitmask32(h,l)) >> l))
+#define bit32(n)        (1U << (n))
+#define bitmask32(h,l)        ((bit32(h)|(bit32(h)-1)) & ~(bit32(l)-1))
+#define bitfield32(x,h,l)    ((((x) & bitmask32(h,l)) >> l))
 
 boolean_t ForceAmdCpu = FALSE;
 
@@ -126,171 +126,171 @@ getBitFieldWidth(uint32_t number)
  * Leaf 2 cache descriptor encodings.
  */
 typedef enum {
-	_NULL_,		/* NULL (empty) descriptor */
-	CACHE,		/* Cache */
-	TLB,		/* TLB */
-	STLB,		/* Shared second-level unified TLB */
-	PREFETCH	/* Prefetch size */
+    _NULL_,        /* NULL (empty) descriptor */
+    CACHE,        /* Cache */
+    TLB,        /* TLB */
+    STLB,        /* Shared second-level unified TLB */
+    PREFETCH    /* Prefetch size */
 } cpuid_leaf2_desc_type_t;
 
 typedef enum {
-	NA,		/* Not Applicable */
-	FULLY,		/* Fully-associative */
-	TRACE,		/* Trace Cache (P4 only) */
-	INST,		/* Instruction TLB */
-	DATA,		/* Data TLB */
-	DATA0,		/* Data TLB, 1st level */
-	DATA1,		/* Data TLB, 2nd level */
-	L1,		/* L1 (unified) cache */
-	L1_INST,	/* L1 Instruction cache */
-	L1_DATA,	/* L1 Data cache */
-	L2,		/* L2 (unified) cache */
-	L3,		/* L3 (unified) cache */
-	L2_2LINESECTOR,	/* L2 (unified) cache with 2 lines per sector */
-	L3_2LINESECTOR,	/* L3(unified) cache with 2 lines per sector */
-	SMALL,		/* Small page TLB */
-	LARGE,		/* Large page TLB */
-	BOTH		/* Small and Large page TLB */
+    NA,        /* Not Applicable */
+    FULLY,        /* Fully-associative */
+    TRACE,        /* Trace Cache (P4 only) */
+    INST,        /* Instruction TLB */
+    DATA,        /* Data TLB */
+    DATA0,        /* Data TLB, 1st level */
+    DATA1,        /* Data TLB, 2nd level */
+    L1,        /* L1 (unified) cache */
+    L1_INST,    /* L1 Instruction cache */
+    L1_DATA,    /* L1 Data cache */
+    L2,        /* L2 (unified) cache */
+    L3,        /* L3 (unified) cache */
+    L2_2LINESECTOR,    /* L2 (unified) cache with 2 lines per sector */
+    L3_2LINESECTOR,    /* L3(unified) cache with 2 lines per sector */
+    SMALL,        /* Small page TLB */
+    LARGE,        /* Large page TLB */
+    BOTH        /* Small and Large page TLB */
 } cpuid_leaf2_qualifier_t;
 
 typedef struct cpuid_cache_descriptor {
-	uint8_t		value;		/* descriptor code */
-	uint8_t		type;		/* cpuid_leaf2_desc_type_t */
-	uint8_t		level;		/* level of cache/TLB hierachy */
-	uint8_t		ways;		/* wayness of cache */
-	uint16_t	size;		/* cachesize or TLB pagesize */
-	uint16_t	entries;	/* number of TLB entries or linesize */
+    uint8_t        value;        /* descriptor code */
+    uint8_t        type;        /* cpuid_leaf2_desc_type_t */
+    uint8_t        level;        /* level of cache/TLB hierachy */
+    uint8_t        ways;        /* wayness of cache */
+    uint16_t    size;        /* cachesize or TLB pagesize */
+    uint16_t    entries;    /* number of TLB entries or linesize */
 } cpuid_cache_descriptor_t;
 
 /*
  * These multipliers are used to encode 1*K .. 64*M in a 16 bit size field
  */
-#define	K	(1)
-#define	M	(1024)
+#define    K    (1)
+#define    M    (1024)
 
 /*
  * Intel cache descriptor table:
  */
 static cpuid_cache_descriptor_t intel_cpuid_leaf2_descriptor_table[] = {
-//	-------------------------------------------------------
-//	value	type	level		ways	size	entries
-//	-------------------------------------------------------
-	{ 0x00,	_NULL_,	NA,		NA,	NA,	NA  },
-	{ 0x01,	TLB,	INST,		4,	SMALL,	32  },
-	{ 0x02,	TLB,	INST,		FULLY,	LARGE,	2   },
-	{ 0x03,	TLB,	DATA,		4,	SMALL,	64  },
-	{ 0x04,	TLB,	DATA,		4,	LARGE,	8   },
-	{ 0x05,	TLB,	DATA1,		4,	LARGE,	32  },
-	{ 0x06,	CACHE,	L1_INST,	4,	8*K,	32  },
-	{ 0x08,	CACHE,	L1_INST,	4,	16*K,	32  },
-	{ 0x09,	CACHE,	L1_INST,	4,	32*K,	64  },
-	{ 0x0A,	CACHE,	L1_DATA,	2,	8*K,	32  },
-	{ 0x0B,	TLB,	INST,		4,	LARGE,	4   },
-	{ 0x0C,	CACHE,	L1_DATA,	4,	16*K,	32  },
-	{ 0x0D,	CACHE,	L1_DATA,	4,	16*K,	64  },
-	{ 0x0E,	CACHE,	L1_DATA,	6,	24*K,	64  },
-	{ 0x21,	CACHE,	L2,		8,	256*K,	64  },
-	{ 0x22,	CACHE,	L3_2LINESECTOR,	4,	512*K,	64  },
-	{ 0x23,	CACHE,	L3_2LINESECTOR, 8,	1*M,	64  },
-	{ 0x25,	CACHE,	L3_2LINESECTOR,	8,	2*M,	64  },
-	{ 0x29,	CACHE,	L3_2LINESECTOR, 8,	4*M,	64  },
-	{ 0x2C,	CACHE,	L1_DATA,	8,	32*K,	64  },
-	{ 0x30,	CACHE,	L1_INST,	8,	32*K,	64  },
-	{ 0x40,	CACHE,	L2,		NA,	0,	NA  },
-	{ 0x41,	CACHE,	L2,		4,	128*K,	32  },
-	{ 0x42,	CACHE,	L2,		4,	256*K,	32  },
-	{ 0x43,	CACHE,	L2,		4,	512*K,	32  },
-	{ 0x44,	CACHE,	L2,		4,	1*M,	32  },
-	{ 0x45,	CACHE,	L2,		4,	2*M,	32  },
-	{ 0x46,	CACHE,	L3,		4,	4*M,	64  },
-	{ 0x47,	CACHE,	L3,		8,	8*M,	64  },
-	{ 0x48,	CACHE,	L2,		12, 	3*M,	64  },
-	{ 0x49,	CACHE,	L2,		16,	4*M,	64  },
-	{ 0x4A,	CACHE,	L3,		12, 	6*M,	64  },
-	{ 0x4B,	CACHE,	L3,		16,	8*M,	64  },
-	{ 0x4C,	CACHE,	L3,		12, 	12*M,	64  },
-	{ 0x4D,	CACHE,	L3,		16,	16*M,	64  },
-	{ 0x4E,	CACHE,	L2,		24,	6*M,	64  },
-	{ 0x4F,	TLB,	INST,		NA,	SMALL,	32  },
-	{ 0x50,	TLB,	INST,		NA,	BOTH,	64  },
-	{ 0x51,	TLB,	INST,		NA,	BOTH,	128 },
-	{ 0x52,	TLB,	INST,		NA,	BOTH,	256 },
-	{ 0x55,	TLB,	INST,		FULLY,	BOTH,	7   },
-	{ 0x56,	TLB,	DATA0,		4,	LARGE,	16  },
-	{ 0x57,	TLB,	DATA0,		4,	SMALL,	16  },
-	{ 0x59,	TLB,	DATA0,		FULLY,	SMALL,	16  },
-	{ 0x5A,	TLB,	DATA0,		4,	LARGE,	32  },
-	{ 0x5B,	TLB,	DATA,		NA,	BOTH,	64  },
-	{ 0x5C,	TLB,	DATA,		NA,	BOTH,	128 },
-	{ 0x5D,	TLB,	DATA,		NA,	BOTH,	256 },
-	{ 0x60,	CACHE,	L1,		16*K,	8,	64  },
-	{ 0x61,	CACHE,	L1,		4,	8*K,	64  },
-	{ 0x62,	CACHE,	L1,		4,	16*K,	64  },
-	{ 0x63,	CACHE,	L1,		4,	32*K,	64  },
-	{ 0x70,	CACHE,	TRACE,		8,	12*K,	NA  },
-	{ 0x71,	CACHE,	TRACE,		8,	16*K,	NA  },
-	{ 0x72,	CACHE,	TRACE,		8,	32*K,	NA  },
-	{ 0x76,	TLB,	INST,		NA,	BOTH,	8   },
-	{ 0x78,	CACHE,	L2,		4,	1*M,	64  },
-	{ 0x79,	CACHE,	L2_2LINESECTOR,	8,	128*K,	64  },
-	{ 0x7A,	CACHE,	L2_2LINESECTOR,	8,	256*K,	64  },
-	{ 0x7B,	CACHE,	L2_2LINESECTOR,	8,	512*K,	64  },
-	{ 0x7C,	CACHE,	L2_2LINESECTOR,	8,	1*M,	64  },
-	{ 0x7D,	CACHE,	L2,		8,	2*M,	64  },
-	{ 0x7F,	CACHE,	L2,		2,	512*K,	64  },
-	{ 0x80,	CACHE,	L2,		8,	512*K,	64  },
-	{ 0x82,	CACHE,	L2,		8,	256*K,	32  },
-	{ 0x83,	CACHE,	L2,		8,	512*K,	32  },
-	{ 0x84,	CACHE,	L2,		8,	1*M,	32  },
-	{ 0x85,	CACHE,	L2,		8,	2*M,	32  },
-	{ 0x86,	CACHE,	L2,		4,	512*K,	64  },
-	{ 0x87,	CACHE,	L2,		8,	1*M,	64  },
-	{ 0xB0,	TLB,	INST,		4,	SMALL,	128 },
-	{ 0xB1,	TLB,	INST,		4,	LARGE,	8   },
-	{ 0xB2,	TLB,	INST,		4,	SMALL,	64  },
-	{ 0xB3,	TLB,	DATA,		4,	SMALL,	128 },
-	{ 0xB4,	TLB,	DATA1,		4,	SMALL,	256 },
-	{ 0xB5,	TLB,	DATA1,		8,	SMALL,	64  },
-	{ 0xB6,	TLB,	DATA1,		8,	SMALL,	128 },
-	{ 0xBA,	TLB,	DATA1,		4,	BOTH,	64  },
-	{ 0xC1,	STLB,	DATA1,		8,	SMALL,	1024},
-	{ 0xCA,	STLB,	DATA1,		4,	SMALL,	512 },
-	{ 0xD0,	CACHE,	L3,		4,	512*K,	64  },
-	{ 0xD1,	CACHE,	L3,		4,	1*M,	64  },
-	{ 0xD2,	CACHE,	L3,		4,	2*M,	64  },
-	{ 0xD3,	CACHE,	L3,		4,	4*M,	64  },
-	{ 0xD4,	CACHE,	L3,		4,	8*M,	64  },
-	{ 0xD6,	CACHE,	L3,		8,	1*M,	64  },
-	{ 0xD7,	CACHE,	L3,		8,	2*M,	64  },
-	{ 0xD8,	CACHE,	L3,		8,	4*M,	64  },
-	{ 0xD9,	CACHE,	L3,		8,	8*M,	64  },
-	{ 0xDA,	CACHE,	L3,		8,	12*M,	64  },
-	{ 0xDC,	CACHE,	L3,		12, 	1536*K,	64  },
-	{ 0xDD,	CACHE,	L3,		12, 	3*M,	64  },
-	{ 0xDE,	CACHE,	L3,		12, 	6*M,	64  },
-	{ 0xDF,	CACHE,	L3,		12,	12*M,	64  },
-	{ 0xE0,	CACHE,	L3,		12,	18*M,	64  },
-	{ 0xE2,	CACHE,	L3,		16,	2*M,	64  },
-	{ 0xE3,	CACHE,	L3,		16,	4*M,	64  },
-	{ 0xE4,	CACHE,	L3,		16,	8*M,	64  },
-	{ 0xE5,	CACHE,	L3,		16,	16*M,	64  },
-	{ 0xE6,	CACHE,	L3,		16,	24*M,	64  },
-	{ 0xF0,	PREFETCH, NA,		NA,	64,	NA  },
-	{ 0xF1,	PREFETCH, NA,		NA,	128,	NA  },
-	{ 0xFF,	CACHE,  NA,		NA,	0,	NA  }
+    //    -------------------------------------------------------
+    //    value    type    level        ways    size    entries
+    //    -------------------------------------------------------
+    { 0x00,    _NULL_,    NA,        NA,    NA,    NA  },
+    { 0x01,    TLB,    INST,        4,    SMALL,    32  },
+    { 0x02,    TLB,    INST,        FULLY,    LARGE,    2   },
+    { 0x03,    TLB,    DATA,        4,    SMALL,    64  },
+    { 0x04,    TLB,    DATA,        4,    LARGE,    8   },
+    { 0x05,    TLB,    DATA1,        4,    LARGE,    32  },
+    { 0x06,    CACHE,    L1_INST,    4,    8*K,    32  },
+    { 0x08,    CACHE,    L1_INST,    4,    16*K,    32  },
+    { 0x09,    CACHE,    L1_INST,    4,    32*K,    64  },
+    { 0x0A,    CACHE,    L1_DATA,    2,    8*K,    32  },
+    { 0x0B,    TLB,    INST,        4,    LARGE,    4   },
+    { 0x0C,    CACHE,    L1_DATA,    4,    16*K,    32  },
+    { 0x0D,    CACHE,    L1_DATA,    4,    16*K,    64  },
+    { 0x0E,    CACHE,    L1_DATA,    6,    24*K,    64  },
+    { 0x21,    CACHE,    L2,        8,    256*K,    64  },
+    { 0x22,    CACHE,    L3_2LINESECTOR,    4,    512*K,    64  },
+    { 0x23,    CACHE,    L3_2LINESECTOR, 8,    1*M,    64  },
+    { 0x25,    CACHE,    L3_2LINESECTOR,    8,    2*M,    64  },
+    { 0x29,    CACHE,    L3_2LINESECTOR, 8,    4*M,    64  },
+    { 0x2C,    CACHE,    L1_DATA,    8,    32*K,    64  },
+    { 0x30,    CACHE,    L1_INST,    8,    32*K,    64  },
+    { 0x40,    CACHE,    L2,        NA,    0,    NA  },
+    { 0x41,    CACHE,    L2,        4,    128*K,    32  },
+    { 0x42,    CACHE,    L2,        4,    256*K,    32  },
+    { 0x43,    CACHE,    L2,        4,    512*K,    32  },
+    { 0x44,    CACHE,    L2,        4,    1*M,    32  },
+    { 0x45,    CACHE,    L2,        4,    2*M,    32  },
+    { 0x46,    CACHE,    L3,        4,    4*M,    64  },
+    { 0x47,    CACHE,    L3,        8,    8*M,    64  },
+    { 0x48,    CACHE,    L2,        12,     3*M,    64  },
+    { 0x49,    CACHE,    L2,        16,    4*M,    64  },
+    { 0x4A,    CACHE,    L3,        12,     6*M,    64  },
+    { 0x4B,    CACHE,    L3,        16,    8*M,    64  },
+    { 0x4C,    CACHE,    L3,        12,     12*M,    64  },
+    { 0x4D,    CACHE,    L3,        16,    16*M,    64  },
+    { 0x4E,    CACHE,    L2,        24,    6*M,    64  },
+    { 0x4F,    TLB,    INST,        NA,    SMALL,    32  },
+    { 0x50,    TLB,    INST,        NA,    BOTH,    64  },
+    { 0x51,    TLB,    INST,        NA,    BOTH,    128 },
+    { 0x52,    TLB,    INST,        NA,    BOTH,    256 },
+    { 0x55,    TLB,    INST,        FULLY,    BOTH,    7   },
+    { 0x56,    TLB,    DATA0,        4,    LARGE,    16  },
+    { 0x57,    TLB,    DATA0,        4,    SMALL,    16  },
+    { 0x59,    TLB,    DATA0,        FULLY,    SMALL,    16  },
+    { 0x5A,    TLB,    DATA0,        4,    LARGE,    32  },
+    { 0x5B,    TLB,    DATA,        NA,    BOTH,    64  },
+    { 0x5C,    TLB,    DATA,        NA,    BOTH,    128 },
+    { 0x5D,    TLB,    DATA,        NA,    BOTH,    256 },
+    { 0x60,    CACHE,    L1,        16*K,    8,    64  },
+    { 0x61,    CACHE,    L1,        4,    8*K,    64  },
+    { 0x62,    CACHE,    L1,        4,    16*K,    64  },
+    { 0x63,    CACHE,    L1,        4,    32*K,    64  },
+    { 0x70,    CACHE,    TRACE,        8,    12*K,    NA  },
+    { 0x71,    CACHE,    TRACE,        8,    16*K,    NA  },
+    { 0x72,    CACHE,    TRACE,        8,    32*K,    NA  },
+    { 0x76,    TLB,    INST,        NA,    BOTH,    8   },
+    { 0x78,    CACHE,    L2,        4,    1*M,    64  },
+    { 0x79,    CACHE,    L2_2LINESECTOR,    8,    128*K,    64  },
+    { 0x7A,    CACHE,    L2_2LINESECTOR,    8,    256*K,    64  },
+    { 0x7B,    CACHE,    L2_2LINESECTOR,    8,    512*K,    64  },
+    { 0x7C,    CACHE,    L2_2LINESECTOR,    8,    1*M,    64  },
+    { 0x7D,    CACHE,    L2,        8,    2*M,    64  },
+    { 0x7F,    CACHE,    L2,        2,    512*K,    64  },
+    { 0x80,    CACHE,    L2,        8,    512*K,    64  },
+    { 0x82,    CACHE,    L2,        8,    256*K,    32  },
+    { 0x83,    CACHE,    L2,        8,    512*K,    32  },
+    { 0x84,    CACHE,    L2,        8,    1*M,    32  },
+    { 0x85,    CACHE,    L2,        8,    2*M,    32  },
+    { 0x86,    CACHE,    L2,        4,    512*K,    64  },
+    { 0x87,    CACHE,    L2,        8,    1*M,    64  },
+    { 0xB0,    TLB,    INST,        4,    SMALL,    128 },
+    { 0xB1,    TLB,    INST,        4,    LARGE,    8   },
+    { 0xB2,    TLB,    INST,        4,    SMALL,    64  },
+    { 0xB3,    TLB,    DATA,        4,    SMALL,    128 },
+    { 0xB4,    TLB,    DATA1,        4,    SMALL,    256 },
+    { 0xB5,    TLB,    DATA1,        8,    SMALL,    64  },
+    { 0xB6,    TLB,    DATA1,        8,    SMALL,    128 },
+    { 0xBA,    TLB,    DATA1,        4,    BOTH,    64  },
+    { 0xC1,    STLB,    DATA1,        8,    SMALL,    1024},
+    { 0xCA,    STLB,    DATA1,        4,    SMALL,    512 },
+    { 0xD0,    CACHE,    L3,        4,    512*K,    64  },
+    { 0xD1,    CACHE,    L3,        4,    1*M,    64  },
+    { 0xD2,    CACHE,    L3,        4,    2*M,    64  },
+    { 0xD3,    CACHE,    L3,        4,    4*M,    64  },
+    { 0xD4,    CACHE,    L3,        4,    8*M,    64  },
+    { 0xD6,    CACHE,    L3,        8,    1*M,    64  },
+    { 0xD7,    CACHE,    L3,        8,    2*M,    64  },
+    { 0xD8,    CACHE,    L3,        8,    4*M,    64  },
+    { 0xD9,    CACHE,    L3,        8,    8*M,    64  },
+    { 0xDA,    CACHE,    L3,        8,    12*M,    64  },
+    { 0xDC,    CACHE,    L3,        12,     1536*K,    64  },
+    { 0xDD,    CACHE,    L3,        12,     3*M,    64  },
+    { 0xDE,    CACHE,    L3,        12,     6*M,    64  },
+    { 0xDF,    CACHE,    L3,        12,    12*M,    64  },
+    { 0xE0,    CACHE,    L3,        12,    18*M,    64  },
+    { 0xE2,    CACHE,    L3,        16,    2*M,    64  },
+    { 0xE3,    CACHE,    L3,        16,    4*M,    64  },
+    { 0xE4,    CACHE,    L3,        16,    8*M,    64  },
+    { 0xE5,    CACHE,    L3,        16,    16*M,    64  },
+    { 0xE6,    CACHE,    L3,        16,    24*M,    64  },
+    { 0xF0,    PREFETCH, NA,        NA,    64,    NA  },
+    { 0xF1,    PREFETCH, NA,        NA,    128,    NA  },
+    { 0xFF,    CACHE,  NA,        NA,    0,    NA  }
 };
-#define	INTEL_LEAF2_DESC_NUM (sizeof(intel_cpuid_leaf2_descriptor_table) / \
-				sizeof(cpuid_cache_descriptor_t))
+#define    INTEL_LEAF2_DESC_NUM (sizeof(intel_cpuid_leaf2_descriptor_table) / \
+sizeof(cpuid_cache_descriptor_t))
 
 static inline cpuid_cache_descriptor_t *
 cpuid_leaf2_find(uint8_t value)
 {
-	unsigned int	i;
-
-	for (i = 0; i < INTEL_LEAF2_DESC_NUM; i++)
-		if (intel_cpuid_leaf2_descriptor_table[i].value == value)
-			return &intel_cpuid_leaf2_descriptor_table[i];
-	return NULL;
+    unsigned int    i;
+    
+    for (i = 0; i < INTEL_LEAF2_DESC_NUM; i++)
+        if (intel_cpuid_leaf2_descriptor_table[i].value == value)
+            return &intel_cpuid_leaf2_descriptor_table[i];
+    return NULL;
 }
 
 /*
@@ -311,6 +311,186 @@ static const char *cache_type_str[LCACHE_MAX] = {
     "Lnone", "L1I", "L1D", "L2U", "L3U"
 };
 
+/* Sinetek: reimplemented, based on AnV, mercurySquad, thanks go to them.
+ * Function is AMD-specific.
+ */
+static void
+cpuid_set_AMDcache_info( i386_cpu_info_t * info_p )
+{
+    uint32_t    reg[4];
+    uint32_t    linesizes[LCACHE_MAX];
+    cache_type_t    type;
+    uint32_t    colors;
+    
+    
+    bzero( linesizes, sizeof(linesizes) );
+    
+    /* get number of cores in processor */
+    /* No HT on AMD so logicals = cores */
+    
+    cpuid_fn(0x80000008, reg);
+    uint32_t cores = bitfield32(reg[ecx], 7, 0) + 1;
+    
+    info_p->cpuid_cores_per_package = cores;
+    
+    if (info_p->cpuid_cores_per_package  == 0)
+    {
+        info_p->cpuid_cores_per_package = 1;
+    }
+    info_p->core_count = info_p->cpuid_cores_per_package;
+    info_p->thread_count = info_p->cpuid_logical_per_package;
+    
+    DBG("cores (%d)\n", cores);
+    DBG("cpuid_cores_per_package (%d)\n", info_p->cpuid_cores_per_package);
+    DBG("cpuid_logical_per_package (%d)\n", info_p->cpuid_logical_per_package );
+    DBG("core_count (%d)\n", info_p->core_count);
+    DBG("thread_count (%d)\n", info_p->thread_count);
+    
+    /* L1 Data */
+    {
+        type = L1D;
+        cpuid_fn(0x80000005, reg);
+        uint32_t cpuid_c_linesize    = bitfield32(reg[ecx], 7,  0);
+        uint32_t cpuid_c_partitions    = bitfield32(reg[ecx], 15, 8);
+        uint32_t cpuid_c_associativity    = bitfield32(reg[ecx], 23, 16);
+        uint32_t cpuid_c_size        = bitfield32(reg[ecx], 31, 24);
+        
+        uint32_t cache_associativity    = cpuid_c_associativity;
+        
+        // size reported in KB.
+        info_p->cache_size[type]      = cpuid_c_size * 1024;
+        info_p->cache_sharing[type]     = 1;
+        info_p->cache_partitions[type]    = cpuid_c_partitions;
+        
+        linesizes[type] = cpuid_c_linesize;
+        uint32_t cache_sets = info_p->cache_size[type] / (cpuid_c_partitions * cpuid_c_linesize * cache_associativity);
+        
+        colors = ( cpuid_c_linesize * cache_sets ) >> 12;
+        if ( colors > vm_cache_geometry_colors )
+            vm_cache_geometry_colors = colors;
+    }
+    /* L1 Instruction */
+    {
+        type = L1I;
+        cpuid_fn(0x80000005, reg);
+        uint32_t cpuid_c_linesize    = bitfield32(reg[edx], 7,  0);
+        uint32_t cpuid_c_partitions    = bitfield32(reg[edx], 15, 8);
+        uint32_t cpuid_c_associativity    = bitfield32(reg[edx], 23, 16);
+        uint32_t cpuid_c_size        = bitfield32(reg[edx], 31, 24);
+        
+        uint32_t cache_associativity    = cpuid_c_associativity;
+        
+        // size reported in KB.
+        info_p->cache_size[type]      = cpuid_c_size * 1024;
+        info_p->cache_sharing[type]     = 1;
+        info_p->cache_partitions[type]    = cpuid_c_partitions;
+        
+        linesizes[type] = cpuid_c_linesize;
+        uint32_t cache_sets = info_p->cache_size[type] / (cpuid_c_partitions * cpuid_c_linesize * cache_associativity);
+        
+        colors = ( cpuid_c_linesize * cache_sets ) >> 12;
+        if ( colors > vm_cache_geometry_colors )
+            vm_cache_geometry_colors = colors;
+    }
+    /* L2 Unified */
+    {
+        type = L2U;
+        cpuid_fn(0x80000006, reg);
+        uint32_t cpuid_c_linesize    = bitfield32(reg[ecx], 7,  0);
+        uint32_t cpuid_c_partitions    = bitfield32(reg[ecx], 11, 8);
+        uint32_t cpuid_c_associativity    = bitfield32(reg[ecx], 15, 12);
+        uint32_t cpuid_c_size        = bitfield32(reg[ecx], 31, 16);
+        
+        // Special formula for associativity:  2^(assoc / 2)
+        uint32_t cache_associativity    = 1ul << (cpuid_c_associativity / 2);
+        
+        // size reported in KB.
+        info_p->cache_size[type]      = cpuid_c_size * 1024 ;//* cpuid_c_associativity;
+        info_p->cache_sharing[type]     = 1;
+        info_p->cache_partitions[type]    = cpuid_c_partitions;
+        
+        linesizes[type] = cpuid_c_linesize;
+        uint32_t cache_sets = info_p->cache_size[type] / (cpuid_c_partitions * cpuid_c_linesize * cache_associativity);
+        
+        colors = ( cpuid_c_linesize * cache_sets ) >> 12;
+        if ( colors > vm_cache_geometry_colors )
+            vm_cache_geometry_colors = colors;
+        
+        // use for cache size etc.
+        info_p->cpuid_cache_L2_associativity = cache_associativity;
+        info_p->cpuid_cache_size    = info_p->cache_size[type];
+        info_p->cache_linesize        = cpuid_c_linesize;
+    }
+    /* L3 Unified */
+    {
+        type = L3U;
+        cpuid_fn(0x80000006, reg);
+        uint32_t cpuid_c_linesize    = bitfield32(reg[edx], 7,  0);
+        uint32_t cpuid_c_partitions    = bitfield32(reg[edx], 11, 8);
+        uint32_t cpuid_c_associativity    = bitfield32(reg[edx], 15, 12);
+        uint32_t cpuid_c_size        = bitfield32(reg[edx], 31, 18);
+        
+        
+        DBG(" cpuid_c_linesize            : %d\n", cpuid_c_linesize);
+        DBG(" cpuid_c_partitions               : %d\n", cpuid_c_partitions);
+        DBG(" cpuid_c_associativity              : %d\n", cpuid_c_associativity);
+        DBG(" cpuid_c_size                : %d\n", cpuid_c_size);
+        
+        // Special formula for associativity:  2^(assoc / 2)
+        uint32_t cache_associativity    = 1ul << (cpuid_c_associativity / 2);
+        
+        if(cpuid_c_size == 0) {
+            // no L3
+            info_p->cache_size[type]      = 0;
+            info_p->cache_sharing[type]     = 0;
+            info_p->cache_partitions[type]    = 0;
+        } else {
+            switch (info_p->cpuid_family) {
+                case 21:
+                    info_p->cache_size[type] = cpuid_c_size * 1024 * cache_associativity;
+                    break;
+                default:
+                    info_p->cache_size[type]      = cpuid_c_size * 1024;
+                    break;
+            }
+            DBG(" L3             : %d\n", info_p->cache_size[type] );
+            
+            
+            info_p->cache_sharing[type]     = 1;
+            info_p->cache_partitions[type]    = cpuid_c_partitions;
+            
+            linesizes[type] = cpuid_c_linesize;
+            uint32_t cache_sets = info_p->cache_size[type] / (cpuid_c_partitions * cpuid_c_linesize * cache_associativity);
+            
+            colors = ( cpuid_c_linesize * cache_sets ) >> 12;
+            if ( colors > vm_cache_geometry_colors )
+                vm_cache_geometry_colors = colors;
+        }
+    }
+    
+    
+    cpuid_fn(0x80000005, reg);
+    uint32_t L1DTlb2and4MSize  = (uint32_t)bitfield32(reg[eax], 23, 16);
+    uint32_t L1ITlb2and4MSize  = (uint32_t)bitfield32(reg[eax], 7, 0);
+    uint32_t L1DTlb4KSize = (uint32_t)bitfield32(reg[ebx], 23, 16);
+    uint32_t L1ITlb4KSize = (uint32_t)bitfield32(reg[ebx], 7, 0);
+    
+    cpuid_fn(0x80000006, reg);
+    uint32_t L2DTlb2and4MSize = (uint32_t)bitfield32(reg[eax], 27, 16);
+    uint32_t L2ITlb2and4MSize = (uint32_t)bitfield32(reg[eax], 11, 0);
+    uint32_t L2DTlb4KSize = (uint32_t)bitfield32(reg[ebx], 27, 16);
+    uint32_t L2ITlb4KSize = (uint32_t)bitfield32(reg[ebx], 11, 0);
+    
+    info_p->cpuid_tlb[0][0][0] =  L1ITlb4KSize;
+    info_p->cpuid_tlb[1][0][0] =  L1DTlb4KSize;
+    info_p->cpuid_tlb[0][0][1] =  L2ITlb4KSize;
+    info_p->cpuid_tlb[1][0][1] =  L2DTlb4KSize;
+    info_p->cpuid_tlb[0][1][0] =  L1ITlb2and4MSize;
+    info_p->cpuid_tlb[1][1][0] =  L1DTlb2and4MSize;
+    info_p->cpuid_tlb[0][1][1] =  L2ITlb2and4MSize;
+    info_p->cpuid_tlb[1][1][1] =  L2DTlb2and4MSize;
+    
+}
 
 static uint32_t amdGetAssociativity(uint32_t flag)
 {
@@ -371,7 +551,7 @@ get_amd_cache_info(i386_cpu_info_t *info_p)
         info_p->cpuid_cores_per_package = cores  / logical;
     }
     
-    info_p->cpuid_logical_per_package = cores;
+    info_p->cpuid_logical_per_package = cores;//cores;
     
     cpuid_fn(0x80000006, reg);
     uint32_t L3ULinesPerTag = bitfield32(reg[edx], 11, 8);
@@ -466,25 +646,6 @@ get_amd_cache_info(i386_cpu_info_t *info_p)
                     
                 case 4:
                 {
-                    /*
-                     //Dev Emulate TEST Code
-                     type = 3 == 3 ? L3U : Lnone;
-                     cache_byte = 8; //4=2MB 8=4MB 12=6MB 16=8MB
-                     cache_linesize = 64;
-                     asso = 12;
-                     cache_associativity = amdGetAssociativity(asso);
-                     cache_partitions = 1;
-                     cache_size = cache_byte * 512 * 1024;
-                     cache_sets = cache_size / (cache_associativity * cache_linesize);
-                     info_p->cache_size[L3U] = cache_size;
-                     info_p->cache_sharing[L3U] = cores;
-                     info_p->cache_partitions[L3U] = cache_partitions;
-                     linesizes[L3U] = cache_linesize;
-                     info_p->cache_linesize = linesizes[L3U];
-                     colors = ( cache_linesize * cache_sets ) >> 12;
-                     if ( colors > vm_cache_geometry_colors )
-                     vm_cache_geometry_colors = colors;
-                     */
                     if (L3ULinesPerTag)
                     {
                         type = 3 == 3 ? L3U : Lnone;
@@ -853,6 +1014,7 @@ cpuid_set_generic_info(i386_cpu_info_t *info_p)
 {
     uint32_t    reg[4];
     char            str[128], *p;
+    char arg[16];
     
     DBG("cpuid_set_generic_info(%p)\n", info_p);
     
@@ -933,6 +1095,7 @@ cpuid_set_generic_info(i386_cpu_info_t *info_p)
             assoc = 128;
         else if (assoc == 0xF)
             assoc = 0xFFFF;
+        //info_p->cpuid_cache_L2_associativity = assoc;
         info_p->cpuid_cache_L2_associativity = bitfield32(reg[ecx],15,12);
         info_p->cpuid_cache_size       = bitfield32(reg[ecx],31,16);
         cpuid_fn(0x80000008, reg);
@@ -948,7 +1111,7 @@ cpuid_set_generic_info(i386_cpu_info_t *info_p)
      * and bracket this with the approved procedure for reading the
      * the microcode version number a.k.a. signature a.k.a. BIOS ID
      */
-
+    
     if (IsIntelCPU())
     {
         wrmsr64(MSR_IA32_BIOS_SIGN_ID, 0);
@@ -968,14 +1131,7 @@ cpuid_set_generic_info(i386_cpu_info_t *info_p)
     info_p->cpuid_extmodel  = bitfield32(reg[eax], 19, 16);
     info_p->cpuid_extfamily = bitfield32(reg[eax], 27, 20);
     info_p->cpuid_brand     = bitfield32(reg[ebx],  7,  0);
-    
-    /** Sinetek: AMD does not like the way the PAT (Page Attribute Table) is set up. **/
-    if (IsIntelCPU())
-    {
-        info_p->cpuid_features  = quad(reg[ecx], reg[edx]);
-    } else {
-        info_p->cpuid_features  = quad(reg[ecx], reg[edx]) & ~CPUID_FEATURE_PAT;
-    }
+    info_p->cpuid_features  = quad(reg[ecx], reg[edx]);
     
     /* Get "processor flag"; necessary for microcode update matching */
     
@@ -1155,6 +1311,16 @@ cpuid_set_generic_info(i386_cpu_info_t *info_p)
         DBG("  ECX           : 0x%x\n", reg[ecx]);
     }
     
+    if (PE_parse_boot_argn("-enableleaf", arg, sizeof (arg)))
+    {
+        cpuid_fn(0x7, reg);
+        info_p->cpuid_leaf7_features = quad(reg[ecx], reg[ebx]);
+        
+        DBG(" Feature Leaf7:\n");
+        DBG("  EBX           : 0x%x\n", reg[ebx]);
+        DBG("  ECX           : 0x%x\n", reg[ecx]);
+    }
+    
     if (info_p->cpuid_max_basic >= 0x15) {
         /*
          * TCS/CCC frequency leaf:
@@ -1179,6 +1345,9 @@ cpuid_set_cpufamily(i386_cpu_info_t *info_p)
     switch (info_p->cpuid_family) {
         case 6:
             switch (info_p->cpuid_model) {
+                case 15:
+                    cpufamily = CPUFAMILY_INTEL_MEROM;
+                    break;
                 case 23:
                     cpufamily = CPUFAMILY_INTEL_PENRYN;
                     break;
@@ -1311,7 +1480,12 @@ cpuid_set_info(void)
     if (IsIntelCPU())
         cpuid_set_cache_info(info_p);
     else {
-        get_amd_cache_info(&cpuid_cpu_info);
+        if (info_p->cpuid_family == 23){
+            get_amd_cache_info(&cpuid_cpu_info);
+        }
+        else{
+            cpuid_set_AMDcache_info(info_p);
+        }
     }
     
     /*
@@ -1439,15 +1613,6 @@ leaf7_feature_map[] = {
     {CPUID_LEAF7_FEATURE_RDSEED,   "RDSEED"},
     {CPUID_LEAF7_FEATURE_ADX,      "ADX"},
     {CPUID_LEAF7_FEATURE_IPT,      "IPT"},
-#if !defined(RC_HIDE_XNU_J137)
-    {CPUID_LEAF7_FEATURE_AVX512F,  "AVX512F"},
-    {CPUID_LEAF7_FEATURE_AVX512CD, "AVX512CD"},
-    {CPUID_LEAF7_FEATURE_AVX512DQ, "AVX512DQ"},
-    {CPUID_LEAF7_FEATURE_AVX512BW, "AVX512BW"},
-    {CPUID_LEAF7_FEATURE_AVX512VL, "AVX512VL"},
-    {CPUID_LEAF7_FEATURE_AVX512IFMA, "AVX512IFMA"},
-    {CPUID_LEAF7_FEATURE_AVX512VBMI, "AVX512VBMI"},
-#endif /* not RC_HIDE_XNU_J137 */
     {CPUID_LEAF7_FEATURE_SGX,      "SGX"},
     {CPUID_LEAF7_FEATURE_PQM,      "PQM"},
     {CPUID_LEAF7_FEATURE_FPU_CSDS, "FPU_CSDS"},
@@ -1595,11 +1760,6 @@ cpuid_family(void)
 uint32_t
 cpuid_cpufamily(void)
 {
-    if (IsAmdCPU())
-    {
-        return CPUFAMILY_INTEL_PENRYN;
-    }
-    
     return cpuid_info()->cpuid_cpufamily;
 }
 
@@ -1674,7 +1834,14 @@ cpuid_init_vmm_info(i386_vmm_info_t *info_p)
     bcopy((char *)&reg[ecx], &info_p->cpuid_vmm_vendor[4], 4);
     bcopy((char *)&reg[edx], &info_p->cpuid_vmm_vendor[8], 4);
     info_p->cpuid_vmm_vendor[12] = '\0';
-
+    /*
+     if (0 == strcmp(info_p->cpuid_vmm_vendor, CPUID_VMM_ID_VMWARE)) {
+     info_p->cpuid_vmm_family = CPUID_VMM_FAMILY_VMWARE;
+     } else if (0 == strcmp(info_p->cpuid_vmm_vendor, CPUID_VMM_ID_PARALLELS)) {
+     info_p->cpuid_vmm_family = CPUID_VMM_FAMILY_PARALLELS;
+     } else {
+     info_p->cpuid_vmm_family = CPUID_VMM_FAMILY_UNKNOWN;
+     } */
     info_p->cpuid_vmm_family = CPUID_VMM_FAMILY_VMWARE;
     /* VMM generic leaves: https://lkml.org/lkml/2008/10/1/246 */
     if (max_vmm_leaf >= 0x40000010) {
@@ -1711,4 +1878,3 @@ cpuid_vmm_family(void)
 {
     return cpuid_vmm_info()->cpuid_vmm_family;
 }
-

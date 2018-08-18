@@ -129,5 +129,12 @@ osfmk/i386/panic_hooks.c	standard
 
 # OPEMU
 osfmk/OPEMU/opemu.c		standard
-osfmk/OPEMU/opemu_math.c		standard
-
+osfmk/OPEMU/opemu_math.c	standard
+osfmk/OPEMU/ssse3.c		standard
+osfmk/OPEMU/sse42.c		standard
+osfmk/OPEMU/sse3.c		standard
+osfmk/OPEMU/libudis86/decode.c standard
+osfmk/OPEMU/libudis86/itab.c standard
+osfmk/OPEMU/libudis86/syn.c standard
+osfmk/OPEMU/libudis86/syn-intel.c standard
+osfmk/OPEMU/libudis86/udis86.c standard
