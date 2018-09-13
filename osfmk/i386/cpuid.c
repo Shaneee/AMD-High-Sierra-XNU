@@ -1311,15 +1311,18 @@ cpuid_set_generic_info(i386_cpu_info_t *info_p)
         DBG("  ECX           : 0x%x\n", reg[ecx]);
     }
     
-    if (PE_parse_boot_argn("-enableleaf", arg, sizeof (arg)))
-    {
+    if (IsAmdCPU() && info_p->cpuid_family >= 21) {
+        /*
+         * Leaf7 Features:
+         */
         cpuid_fn(0x7, reg);
-        info_p->cpuid_leaf7_features = quad(reg[ecx], reg[ebx]);
+        info_p->cpuid_leaf7_features = quad(reg[ecx], reg[ebx])  & ~CPUID_LEAF7_FEATURE_SMAP;
         
         DBG(" Feature Leaf7:\n");
         DBG("  EBX           : 0x%x\n", reg[ebx]);
         DBG("  ECX           : 0x%x\n", reg[ecx]);
     }
+    
     
     if (info_p->cpuid_max_basic >= 0x15) {
         /*
@@ -1460,6 +1463,7 @@ cpuid_set_info(void)
     
     info_p->cpuid_cpu_type = CPU_TYPE_X86;
     
+    
     if (!PE_parse_boot_argn("-enable_x86_64h", &enable_x86_64h, sizeof(enable_x86_64h))) {
         boolean_t        disable_x86_64h = FALSE;
         
@@ -1476,6 +1480,7 @@ cpuid_set_info(void)
     } else {
         info_p->cpuid_cpu_subtype = CPU_SUBTYPE_X86_ARCH1;
     }
+    
     
     if (IsIntelCPU())
         cpuid_set_cache_info(info_p);
@@ -1609,10 +1614,18 @@ leaf7_feature_map[] = {
     {CPUID_LEAF7_FEATURE_BMI2,     "BMI2"},
     {CPUID_LEAF7_FEATURE_INVPCID,  "INVPCID"},
     {CPUID_LEAF7_FEATURE_RTM,      "RTM"},
-    {CPUID_LEAF7_FEATURE_SMAP,     "SMAP"},
     {CPUID_LEAF7_FEATURE_RDSEED,   "RDSEED"},
     {CPUID_LEAF7_FEATURE_ADX,      "ADX"},
     {CPUID_LEAF7_FEATURE_IPT,      "IPT"},
+#if !defined(RC_HIDE_XNU_J137)
+    {CPUID_LEAF7_FEATURE_AVX512F,  "AVX512F"},
+    {CPUID_LEAF7_FEATURE_AVX512CD, "AVX512CD"},
+    {CPUID_LEAF7_FEATURE_AVX512DQ, "AVX512DQ"},
+    {CPUID_LEAF7_FEATURE_AVX512BW, "AVX512BW"},
+    {CPUID_LEAF7_FEATURE_AVX512VL, "AVX512VL"},
+    {CPUID_LEAF7_FEATURE_AVX512IFMA, "AVX512IFMA"},
+    {CPUID_LEAF7_FEATURE_AVX512VBMI, "AVX512VBMI"},
+#endif /* not RC_HIDE_XNU_J137 */
     {CPUID_LEAF7_FEATURE_SGX,      "SGX"},
     {CPUID_LEAF7_FEATURE_PQM,      "PQM"},
     {CPUID_LEAF7_FEATURE_FPU_CSDS, "FPU_CSDS"},

@@ -730,7 +730,7 @@ __attribute__((noreturn))
 void
 panic_spin_forever()
 {
-	paniclog_append_noflush("\nPlease go to https://panic.apple.com to report this panic\n");
+	paniclog_append_noflush("\nPlease go to https://forum.amd-osx.com to report this panic\n");
 
 	for (;;) { }
 }

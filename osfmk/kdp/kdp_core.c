@@ -1381,7 +1381,7 @@ void
 panic_spin_shmcon()
 {
 #pragma clang diagnostic pop
-	kern_coredump_log(NULL, "\nPlease go to https://panic.apple.com to report this panic\n");
+	kern_coredump_log(NULL, "\nPlease go to https://forum.amd-osx.com to report this panic\n");
 	kern_coredump_log(NULL, "Waiting for hardware shared memory debugger, handshake structure is at virt: %p, phys %p\n",
 			hwsd_info, (void *)kvtophys((vm_offset_t)hwsd_info));
 
