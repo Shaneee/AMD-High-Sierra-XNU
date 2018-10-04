@@ -37,6 +37,7 @@
 #include <i386/cpu_data.h>
 #include <i386/lapic.h>
 #include <i386/machine_routines.h>
+#include <stddef.h>
 
 __private_extern__ void qsort(
     void * array,
@@ -51,15 +52,14 @@ x86_affinity_set_t	*x86_affinities = NULL;
 static int		x86_affinity_count = 0;
 
 /*
- * cpu_topology_sort() is called after all processors have been registered
- * but before any non-boot processor id started.
- * We establish canonical logical processor numbering - logical cpus must be
- * contiguous, zero-based and assigned in physical (local apic id) order.
- * This step is required because the discovery/registration order is
- * non-deterministic - cores are registered in differing orders over boots.
- * Enforcing canonical numbering simplifies identification
- * of processors - in particular, for stopping/starting from CHUD.
- */ 
+ * cpu_topology_sort() is called after all processors have been registered but
+ * before any non-boot processor id started.  We establish canonical logical
+ * processor numbering - logical cpus must be contiguous, zero-based and
+ * assigned in physical (local apic id) order.  This step is required because
+ * the discovery/registration order is non-deterministic - cores are registered
+ * in differing orders over boots.  Enforcing canonical numbering simplifies
+ * identification of processors.
+ */
 void
 cpu_topology_sort(int ncpus)
 {

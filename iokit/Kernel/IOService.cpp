@@ -466,6 +466,11 @@ const char *getCpuDelayBusStallHolderName(void) {
     return sCPULatencyHolderName[kCpuDelayBusStall];
 }
 
+const char *getCpuInterruptDelayHolderName(void);
+const char *getCpuInterruptDelayHolderName(void) {
+    return sCPULatencyHolderName[kCpuDelayInterrupt];
+}
+
 }
 #endif
 
@@ -2278,16 +2283,20 @@ void IOService::scheduleTerminatePhase2( IOOptionBits options )
 		terminateWorker( options );
             wait = (0 != (__state[1] & kIOServiceBusyStateMask));
             if( wait) {
-                // wait for the victim to go non-busy
+                /* wait for the victim to go non-busy */
                 if( !haveDeadline) {
                     clock_interval_to_deadline( 15, kSecondScale, &deadline );
                     haveDeadline = true;
                 }
+                /* let others do work while we wait */
+                gIOTerminateThread = 0;
+                IOLockWakeup( gJobsLock, (event_t) &gIOTerminateThread, /* one-thread */ false);
                 waitResult = IOLockSleepDeadline( gJobsLock, &gIOTerminateWork,
                                                   deadline, THREAD_UNINT );
-                if(__improbable(waitResult == THREAD_TIMED_OUT)) {
+                if (__improbable(waitResult == THREAD_TIMED_OUT)) {
                     panic("%s[0x%qx]::terminate(kIOServiceSynchronous) timeout\n", getName(), getRegistryEntryID());
-		}
+                }
+                waitToBecomeTerminateThread();
             }
         } while(gIOTerminateWork || (wait && (waitResult != THREAD_TIMED_OUT)));
 
@@ -2672,15 +2681,9 @@ void IOService::terminateWorker( IOOptionBits options )
 		    notifiers = victim->copyNotifiers(gIOWillTerminateNotification, 0, 0xffffffff);
 		    victim->invokeNotifiers(&notifiers);
 
-                    if( 0 == victim->getClient()) {
-
-                        // no clients - will go to finalize
-			victim->scheduleFinalize(false);
-
-                    } else {
-                        _workLoopAction( (IOWorkLoop::Action) &actionWillTerminate,
+                    _workLoopAction( (IOWorkLoop::Action) &actionWillTerminate,
                                             victim, (void *)(uintptr_t) options, (void *)(uintptr_t) doPhase2List );
-                    }
+
                     didPhase2List->headQ( victim );
                 }
                 victim->release();
@@ -2692,9 +2695,10 @@ void IOService::terminateWorker( IOOptionBits options )
             }
         
             while( (victim = (IOService *) didPhase2List->getObject(0)) ) {
-    
-                if( victim->lockForArbitration( true )) {
+		bool scheduleFinalize = false;
+		if( victim->lockForArbitration( true )) {
                     victim->__state[1] |= kIOServiceTermPhase3State;
+                    scheduleFinalize = (0 == victim->getClient());
                     victim->unlockForArbitration();
                 }
                 _workLoopAction( (IOWorkLoop::Action) &actionDidTerminate,
@@ -2703,6 +2707,8 @@ void IOService::terminateWorker( IOOptionBits options )
 		    _workLoopAction( (IOWorkLoop::Action) &actionDidStop,
 					victim, (void *)(uintptr_t) options, NULL );
 		}
+                // no clients - will go to finalize
+                if (scheduleFinalize) victim->scheduleFinalize(false);
                 didPhase2List->removeObject(0);
             }
             IOLockLock( gJobsLock );
@@ -2713,10 +2719,17 @@ void IOService::terminateWorker( IOOptionBits options )
             doPhase3 = false;
             // finalize leaves
             while( (victim = (IOService *) gIOFinalizeList->getObject(0))) {
-    
+                bool sendFinal = false;
                 IOLockUnlock( gJobsLock );
-                _workLoopAction( (IOWorkLoop::Action) &actionFinalize,
+                if (victim->lockForArbitration(true)) {
+                    sendFinal = (0 == (victim->__state[1] & kIOServiceFinalized));
+                    if (sendFinal) victim->__state[1] |= kIOServiceFinalized;
+                    victim->unlockForArbitration();
+                }
+                if (sendFinal) {
+                    _workLoopAction( (IOWorkLoop::Action) &actionFinalize,
                                     victim, (void *)(uintptr_t) options );
+                }
                 IOLockLock( gJobsLock );
                 // hold off free
                 freeList->setObject( victim );
@@ -2745,22 +2758,26 @@ void IOService::terminateWorker( IOOptionBits options )
 
                 } else {
                     // a terminated client is not ready for stop if it has clients, skip it
-                    if( (kIOServiceInactiveState & client->__state[0]) && client->getClient()) {
-                        TLOG("%s[0x%qx]::defer stop(%s[0x%qx])\n", 
-                        	client->getName(), regID2, 
-                        	client->getClient()->getName(), client->getClient()->getRegistryEntryID());
-			IOServiceTrace(
-			    IOSERVICE_TERMINATE_STOP_DEFER,
-			    (uintptr_t) regID1, 
-			    (uintptr_t) (regID1 >> 32),
-			    (uintptr_t) regID2, 
-			    (uintptr_t) (regID2 >> 32));
-
-                        idx++;
-                        continue;
-                    }
-        
+                    bool deferStop = (0 != (kIOServiceInactiveState & client->__state[0]));
                     IOLockUnlock( gJobsLock );
+                    if (deferStop && client->lockForArbitration(true)) {
+                        deferStop = (0 == (client->__state[1] & kIOServiceFinalized));
+                        //deferStop = (!deferStop && (0 != client->getClient()));
+                        //deferStop = (0 != client->getClient());
+                        client->unlockForArbitration();
+                        if (deferStop) {
+                            TLOG("%s[0x%qx]::defer stop()\n", client->getName(), regID2);
+                            IOServiceTrace(IOSERVICE_TERMINATE_STOP_DEFER,
+                               (uintptr_t) regID1,
+                               (uintptr_t) (regID1 >> 32),
+                               (uintptr_t) regID2,
+                               (uintptr_t) (regID2 >> 32));
+
+                            idx++;
+                            IOLockLock( gJobsLock );
+                            continue;
+                        }
+                    }
                     _workLoopAction( (IOWorkLoop::Action) &actionStop,
                                      provider, (void *) client );
                     IOLockLock( gJobsLock );

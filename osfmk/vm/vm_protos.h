@@ -109,6 +109,12 @@ extern kern_return_t vm_map_purgable_control(
 				vm_purgable_t		control,
 				int			*state);
 
+extern kern_return_t
+vnode_pager_get_object_vnode(
+	memory_object_t mem_obj,
+	uintptr_t * vnodeaddr,
+	uint32_t * vid);
+
 #if CONFIG_COREDUMP
 extern boolean_t coredumpok(vm_map_t map, vm_offset_t va);
 #endif
@@ -582,6 +588,14 @@ extern void 		memory_object_mark_eligible_for_secluded(
 #endif /* CONFIG_SECLUDED_MEMORY */
 
 #define MAX_PAGE_RANGE_QUERY	(1ULL * 1024 * 1024 * 1024) /* 1 GB */
+
+extern kern_return_t mach_make_memory_entry_internal(
+	vm_map_t		target_map,
+	memory_object_size_t	*size,
+	memory_object_offset_t offset,
+	vm_prot_t		permission,
+	ipc_port_t		*object_handle,
+	ipc_port_t		parent_handle);
 
 #ifdef __cplusplus
 }

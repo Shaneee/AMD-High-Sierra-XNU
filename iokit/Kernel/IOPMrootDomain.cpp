@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998-2008 Apple Inc. All rights reserved.
+ * Copyright (c) 1998-2017 Apple Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
@@ -359,6 +359,7 @@ static IOLock *         gPMHaltLock  = 0;
 static OSArray *        gPMHaltArray = 0;
 static const OSSymbol * gPMHaltClientAcknowledgeKey = 0;
 static bool             gPMQuiesced;
+static uint32_t         gIOPMPCIHostBridgeWakeDelay;
 
 // Constants used as arguments to IOPMrootDomain::informCPUStateChange
 #define kCPUUnknownIndex    9999999
@@ -640,7 +641,7 @@ halt_log_enter(const char * what, const void * pc, uint64_t time)
 
     if (!gHaltLog) return;
     absolutetime_to_nanoseconds(time, &nano);
-    millis = nano / 1000000ULL;
+    millis = nano / NSEC_PER_MSEC;
     if (millis < 100) return;
 
     IOLockLock(gHaltLogLock);
@@ -659,9 +660,27 @@ halt_log_enter(const char * what, const void * pc, uint64_t time)
 
 extern  uint32_t                           gFSState;
 
-extern "C" void IOSystemShutdownNotification(void)
+extern "C" void IOSystemShutdownNotification(int stage)
 {
     uint64_t startTime;
+
+    if (kIOSystemShutdownNotificationStageRootUnmount == stage)
+    {
+#if !CONFIG_EMBEDDED
+        uint64_t nano, millis;
+        startTime = mach_absolute_time();
+        IOService::getPlatform()->waitQuiet(30 * NSEC_PER_SEC);
+        absolutetime_to_nanoseconds(mach_absolute_time() - startTime, &nano);
+        millis = nano / NSEC_PER_MSEC;
+        if (gHaltTimeMaxLog && (millis >= gHaltTimeMaxLog))
+        {
+            printf("waitQuiet() for unmount %qd ms\n", millis);
+        }
+#endif
+        return;
+    }
+
+    assert(kIOSystemShutdownNotificationStageProcessExit == stage);
 
     IOLockLock(gHaltLogLock);
     if (!gHaltLog)
@@ -888,7 +907,7 @@ static UInt32 computeDeltaTimeMS( const AbsoluteTime * startTime, AbsoluteTime *
         *elapsedTime = endTime;
     }
 
-    return (UInt32)(nano / 1000000ULL);
+    return (UInt32)(nano / NSEC_PER_MSEC);
 }
 
 //******************************************************************************
@@ -1134,6 +1153,7 @@ bool IOPMrootDomain::start( IOService * nub )
     PE_parse_boot_argn("noidle", &gNoIdleFlag, sizeof(gNoIdleFlag));
     PE_parse_boot_argn("haltmspanic", &gHaltTimeMaxPanic, sizeof(gHaltTimeMaxPanic));
     PE_parse_boot_argn("haltmslog", &gHaltTimeMaxLog, sizeof(gHaltTimeMaxLog));
+	PE_parse_boot_argn("pcihostbridge_wake_delay", &gIOPMPCIHostBridgeWakeDelay, sizeof(gIOPMPCIHostBridgeWakeDelay));
 
     queue_init(&aggressivesQueue);
     aggressivesThreadCall = thread_call_allocate(handleAggressivesFunction, this);
@@ -3258,6 +3278,40 @@ void IOPMrootDomain::handlePublishSleepWakeUUID( bool shouldPublish )
 }
 
 //******************************************************************************
+// IOPMGetSleepWakeUUIDKey
+//
+// Return the truth value of gSleepWakeUUIDIsSet and optionally copy the key.
+// To get the full key -- a C string -- the buffer must large enough for
+// the end-of-string character.
+// The key is expected to be an UUID string
+//******************************************************************************
+
+extern "C" bool
+IOPMCopySleepWakeUUIDKey(char *buffer, size_t buf_len)
+{
+	if (!gSleepWakeUUIDIsSet) {
+		return (false);
+	}
+
+	if (buffer != NULL) {
+		OSString *string;
+
+		string = (OSString *)
+		    gRootDomain->copyProperty(kIOPMSleepWakeUUIDKey);
+
+		if (string == NULL) {
+			*buffer = '\0';
+		} else {
+			strlcpy(buffer, string->getCStringNoCopy(), buf_len);
+
+			string->release();
+		}
+	}
+
+	return (true);
+}
+
+//******************************************************************************
 // initializeBootSessionUUID
 //
 // Initialize the boot session uuid at boot up and sets it into registry.
@@ -4871,6 +4925,8 @@ IOReturn IOPMrootDomain::restartSystem( void )
 // MARK: -
 // MARK: System Capability
 
+SYSCTL_UINT(_kern, OID_AUTO, pcihostbridge_wake_delay, CTLFLAG_RD | CTLFLAG_KERN | CTLFLAG_LOCKED, (uint32_t *)&gIOPMPCIHostBridgeWakeDelay, 0, "");
+
 //******************************************************************************
 // tagPowerPlaneService
 //
@@ -4911,6 +4967,11 @@ void IOPMrootDomain::tagPowerPlaneService(
     if (isDisplayWrangler)
     {
         wrangler = service;
+		// found the display wrangler, check for any display assertions already created
+		if (pmAssertions->getActivatedAssertions() & kIOPMDriverAssertionPreventDisplaySleepBit) {
+			DLOG("wrangler setIgnoreIdleTimer\(1) due to pre-existing assertion\n");
+			wrangler->setIgnoreIdleTimer( true );
+		}
     }
 #else
     isDisplayWrangler = false;
@@ -4936,13 +4997,14 @@ void IOPMrootDomain::tagPowerPlaneService(
 
         while (child != this)
         {
-            if ((parent == pciHostBridgeDriver) ||
+            if ((gIOPMPCIHostBridgeWakeDelay ? (parent == pciHostBridgeDriver) : (parent->metaCast("IOPCIDevice") != NULL)) ||
                 (parent == this))
             {
                 if (OSDynamicCast(IOPowerConnection, child))
                 {
                     IOPowerConnection * conn = (IOPowerConnection *) child;
                     conn->delayChildNotification = true;
+                    DLOG("delayChildNotification for 0x%llx\n", conn->getRegistryEntryID());
                 }
                 break;
             }
@@ -5644,7 +5706,7 @@ void IOPMrootDomain::overridePowerChangeForUIService(
                 absolutetime_to_nanoseconds(now, &nsec);
                 if (kIOLogPMRootDomain & gIOKitDebug)
                     MSG("Graphics suppressed %u ms\n",
-                        ((int)((nsec) / 1000000ULL)));
+                        ((int)((nsec) / NSEC_PER_MSEC)));
             }
             graphicsSuppressed = true;
         }
@@ -6190,8 +6252,6 @@ bool IOPMrootDomain::displayWranglerMatchPublished(
     IONotifier * notifier __unused)
 {
 #if !NO_KERNEL_HID
-    // found the display wrangler, check for any display assertions already created
-    gRootDomain->evaluateWranglerAssertions();
     // install a handler
     if( !newService->registerInterest( gIOGeneralInterest,
                             &displayWranglerNotification, target, 0) )
@@ -7528,7 +7588,7 @@ void IOPMrootDomain::requestFullWake( FullWakeReason reason )
         absolutetime_to_nanoseconds(now, &nsec);
         MSG("full wake %s (reason %u) %u ms\n",
             promotion ? "promotion" : "request",
-            fullWakeReason, ((int)((nsec) / 1000000ULL)));
+            fullWakeReason, ((int)((nsec) / NSEC_PER_MSEC)));
     }
 }
 
@@ -7638,22 +7698,6 @@ void IOPMrootDomain::evaluateAssertions(IOPMDriverAssertionType newAssertions, I
     }
 }
 
-void IOPMrootDomain::evaluateWranglerAssertions()
-{
-    if (gIOPMWorkLoop->inGate() == false) {
-        gIOPMWorkLoop->runAction(
-                OSMemberFunctionCast(IOWorkLoop::Action, this, &IOPMrootDomain::evaluateWranglerAssertions),
-                (OSObject *)this);
-
-        return;
-    }
-
-    if (pmAssertions->getActivatedAssertions() & kIOPMDriverAssertionPreventDisplaySleepBit) {
-        DLOG("wrangler setIgnoreIdleTimer\(1) on matching\n");
-        wrangler->setIgnoreIdleTimer( true );
-    }
-}
-
 // MARK: -
 // MARK: Statistics
 
@@ -7685,7 +7729,7 @@ void IOPMrootDomain::pmStatsRecordEvent(
 
             if (stopping) {
                 delta = gPMStats.hibWrite.stop - gPMStats.hibWrite.start;
-                IOLog("PMStats: Hibernate write took %qd ms\n", delta/1000000ULL);
+                IOLog("PMStats: Hibernate write took %qd ms\n", delta/NSEC_PER_MSEC);
             }
             break;
         case kIOPMStatsHibernateImageRead:
@@ -7696,7 +7740,7 @@ void IOPMrootDomain::pmStatsRecordEvent(
 
             if (stopping) {
                 delta = gPMStats.hibRead.stop - gPMStats.hibRead.start;
-                IOLog("PMStats: Hibernate read took %qd ms\n", delta/1000000ULL);
+                IOLog("PMStats: Hibernate read took %qd ms\n", delta/NSEC_PER_MSEC);
 
                 publishPMStats = OSData::withBytes(&gPMStats, sizeof(gPMStats));
                 setProperty(kIOPMSleepStatisticsKey, publishPMStats);

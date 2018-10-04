@@ -199,7 +199,7 @@
 .endmacro
 
 #if __ARM_KERNEL_PROTECT__
-	.data
+	.text
 	.align 3
 	.globl EXT(exc_vectors_table)
 LEXT(exc_vectors_table)
@@ -400,6 +400,7 @@ Lel1_sp1_serror_vector_long:
 	b		fleh_dispatch64
 
 .macro EL0_64_VECTOR
+	mov		x18, xzr						// Zero x18 to avoid leaking data to user SS
 	stp		x0, x1, [sp, #-16]!					// Save x0 and x1 to the exception stack
 	mrs		x0, TPIDR_EL1						// Load the thread register
 	mrs		x1, SP_EL0							// Load the user stack pointer
@@ -564,12 +565,38 @@ fleh_dispatch64:
 	/* Save arm_saved_state64 */
 	SPILL_REGISTERS
 
-	/* If exception is from userspace, zero lr */
-	ldr		w21, [x0, SS64_CPSR]
-	and		x21, x21, #(PSR64_MODE_EL_MASK)
-	cmp		x21, #(PSR64_MODE_EL0)
+	/* If exception is from userspace, zero unused registers */
+	and		x23, x23, #(PSR64_MODE_EL_MASK)
+	cmp		x23, #(PSR64_MODE_EL0)
 	bne		1f
-	mov		lr, #0
+
+	mov		x2, xzr
+	mov		x3, xzr
+	mov		x4, xzr
+	mov		x5, xzr
+	mov		x6, xzr
+	mov		x7, xzr
+	mov		x8, xzr
+	mov		x9, xzr
+	mov		x10, xzr
+	mov		x11, xzr
+	mov		x12, xzr
+	mov		x13, xzr
+	mov		x14, xzr
+	mov		x15, xzr
+	mov		x16, xzr
+	mov		x17, xzr
+	mov		x18, xzr
+	mov		x19, xzr
+	mov		x20, xzr
+	/* x21, x22 cleared in common case below */
+	mov		x23, xzr
+	mov		x24, xzr
+	mov		x25, xzr
+	mov		x26, xzr
+	mov		x27, xzr
+	mov		x28, xzr
+	/* fp/lr already cleared by EL0_64_VECTOR */
 1:
 
 	mov		x21, x0								// Copy arm_context_t pointer to x21
@@ -885,9 +912,9 @@ check_user_asts:
 
 
 exception_return:
-	msr		DAIFSet, #(DAIFSC_IRQF | DAIFSC_FIQF)	// Disable interrupts
-	mrs		x3, TPIDR_EL1						// Load thread pointer
-	mov		sp, x21								// Reload the pcb pointer
+	msr		DAIFSet, #DAIFSC_ALL				// Disable exceptions
+	mrs		x3, TPIDR_EL1					// Load thread pointer
+	mov		sp, x21						// Reload the pcb pointer
 
 	/* ARM64_TODO Reserve x18 until we decide what to do with it */
 	ldr		x0, [x3, TH_CTH_DATA]				// Load cthread data pointer

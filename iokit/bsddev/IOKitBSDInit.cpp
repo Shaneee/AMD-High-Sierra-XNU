@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 1998-2018 Apple Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
@@ -947,6 +947,7 @@ IOBSDMountChange(struct mount * mp, uint32_t op)
 #endif /* CONFIG_EMBEDDED */
 #endif /* IOPOLLED_COREFILE */
 }
+
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 

@@ -38,6 +38,7 @@ __BEGIN_DECLS
 #include <mach/memory_object_types.h>
 #include <device/device_port.h>
 #include <IOKit/IODMACommand.h>
+#include <IOKit/IOKitServer.h>
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
@@ -96,16 +97,6 @@ IOMemoryMapTracking(IOTrackingUser * tracking, task_t * task,
 #endif /* IOTRACKING */
 
 extern vm_size_t debug_iomallocpageable_size;
-
-// osfmk/device/iokit_rpc.c
-extern kern_return_t IOMapPages(vm_map_t map, mach_vm_address_t va, mach_vm_address_t pa,
-                                 mach_vm_size_t length, unsigned int mapFlags);
-extern kern_return_t IOUnmapPages(vm_map_t map, mach_vm_address_t va, mach_vm_size_t length);
-
-extern kern_return_t IOProtectCacheMode(vm_map_t map, mach_vm_address_t va,
-					mach_vm_size_t length, unsigned int mapFlags);
-
-extern ppnum_t IOGetLastPageNumber(void);
 
 extern ppnum_t gIOLastPage;
 
@@ -222,6 +213,9 @@ extern OSSet * gIORemoveOnReadProperties;
 extern "C" void IOKitInitializeTime( void );
 
 extern "C" OSString * IOCopyLogNameForPID(int pid);
+
+extern "C" void IOKitKernelLogBuffer(const char * title, const void * buffer, size_t size,
+                          void (*output)(const char *format, ...));
 
 #if defined(__i386__) || defined(__x86_64__)
 #ifndef __cplusplus
